@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # coding: utf-8
-# Copyright 2016 Abram Hindle, https://github.com/tywtyw2002, and https://github.com/treedust
+# Copyright 2016 Abram Hindle, https://github.com/tywtyw2002, and https://github.com/treedust, Urvi Patel
 # 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -41,13 +41,20 @@ class HTTPClient(object):
         return None
 
     def get_code(self, data):
-        return None
+        # separate and return the status code
+        lines = data.splitlines()
+        codeString = lines[0].split(" ")
+
+        return codeString[1]
 
     def get_headers(self,data):
         return None
 
     def get_body(self, data):
-        return None
+        # separate and return the content
+        sections = data.split("\r\n\r\n")
+        # print("Sections:\n", sections[1])
+        return sections[1]
     
     def sendall(self, data):
         self.socket.sendall(data.encode('utf-8'))
@@ -67,14 +74,79 @@ class HTTPClient(object):
                 done = not part
         return buffer.decode('utf-8')
 
+    def getPort(self, parsedURL):
+        # return the port
+        if parsedURL.port == None:
+            port = 80
+        else:
+            port = parsedURL.port
+        return port
+
+    def getPath(self, parsedURL):
+        # return the url path
+        if parsedURL.path == '':
+            path = "/"
+        else:
+            path = parsedURL.path
+        return path
+
     def GET(self, url, args=None):
         code = 500
         body = ""
+
+        # parse url, get host, port, and path
+        parsedURL = urllib.parse.urlparse(url)
+        host = parsedURL.hostname
+        port = self.getPort(parsedURL)
+        path = self.getPath(parsedURL)
+
+        # construct the GET request header
+        request = f'GET {path} HTTP/1.1\r\nHost: {parsedURL.netloc}\r\nConnection: close\r\n\r\n'
+
+        # connect to the socket, send GET request, get response, and close socket
+        self.connect(host, port)
+        self.sendall(request)
+        response = self.recvall(self.socket)
+        self.close()
+
+        # separate status code and content body
+        code = int(self.get_code(response))
+        body = self.get_body(response)
+
         return HTTPResponse(code, body)
 
     def POST(self, url, args=None):
         code = 500
         body = ""
+
+        # parse url, get host, port, and path
+        parsedURL = urllib.parse.urlparse(url)
+        host = parsedURL.hostname
+        port = self.getPort(parsedURL)
+        path = self.getPath(parsedURL)
+
+        # parse arguments
+        if args != None:
+            arguments = urllib.parse.urlencode(args)
+            argLen = len(arguments)
+            arguments += "\r\n\r\n"
+        else:
+            argLen = 0
+            arguments = ""
+
+        # construct the POST request header
+        request = f'POST {path} HTTP/1.1\r\nHost: {parsedURL.netloc}\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {argLen}\r\nConnection: close\r\n\r\n{arguments}'
+
+        # connect to the socket, send POST request, get response, and close socket
+        self.connect(host, port)
+        self.sendall(request)
+        response = self.recvall(self.socket)
+        self.close()
+        
+        # separate status code and content body
+        code = int(self.get_code(response))
+        body = self.get_body(response)
+
         return HTTPResponse(code, body)
 
     def command(self, url, command="GET", args=None):
